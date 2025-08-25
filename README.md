@@ -25,13 +25,13 @@ Transparent Execution: The broker automatically handles cache misses by invoking
 To install go-cache-helper, use go get:
 
 ```
-go get github.com/KoichiGinu/go-cache-helper
+go get github.com/usuginus/go-cache-helper
 ```
 
 Then import the package in your code:
 
 ```
-import "github.com/KoichiGinu/go-cache-helper"
+import "github.com/usuginus/go-cache-helper"
 ```
 
 ## Usage
@@ -45,7 +45,7 @@ import (
 	"fmt"
 	"time"
 
-	memorycache "github.com/KoichiGinu/go-cache-helper"
+	memorycache "github.com/usuginus/go-cache-helper"
 )
 
 func main() {
@@ -74,7 +74,7 @@ import (
 	"fmt"
 	"time"
 
-	memorycache "github.com/KoichiGinu/go-cache-helper"
+	memorycache "github.com/usuginus/go-cache-helper"
 )
 
 func main() {

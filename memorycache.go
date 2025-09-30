@@ -20,45 +20,78 @@ var (
 	ErrAssertionFailed = fmt.Errorf("cache data type assertion failed")
 )
 
-// cacheClient is the underlying shared in-memory cache instance.
-var cacheClient = cache.New(DefaultExpiration, DefaultCleanupInterval)
+// defaultCacheClient is the underlying shared in-memory cache instance.
+var defaultCacheClient = cache.New(DefaultExpiration, DefaultCleanupInterval)
+
+// ProviderOption configures a MemoryCacheProvider.
+type ProviderOption func(*providerConfig)
+
+type providerConfig struct {
+	client *cache.Cache
+}
+
+// WithCacheClient lets callers inject a custom cache client.
+func WithCacheClient(client *cache.Cache) ProviderOption {
+	return func(cfg *providerConfig) {
+		cfg.client = client
+	}
+}
+
+// WithCacheConfig creates a dedicated cache client using the supplied settings.
+// This option overrides WithCacheClient when both are provided.
+func WithCacheConfig(defaultExpiration, cleanupInterval time.Duration) ProviderOption {
+	return func(cfg *providerConfig) {
+		cfg.client = cache.New(defaultExpiration, cleanupInterval)
+	}
+}
 
 // MemoryCacheProvider provides a generic interface for caching values of type T.
 type MemoryCacheProvider[T any] struct {
 	cacheKey string
+	client   *cache.Cache
 }
 
 // NewMemoryCacheProvider creates a new MemoryCacheProvider with the specified cache key.
-func NewMemoryCacheProvider[T any](cacheKey string) *MemoryCacheProvider[T] {
-	return &MemoryCacheProvider[T]{cacheKey: cacheKey}
+func NewMemoryCacheProvider[T any](cacheKey string, opts ...ProviderOption) *MemoryCacheProvider[T] {
+	cfg := providerConfig{client: defaultCacheClient}
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+	if cfg.client == nil {
+		cfg.client = defaultCacheClient
+	}
+	return &MemoryCacheProvider[T]{
+		cacheKey: cacheKey,
+		client:   cfg.client,
+	}
 }
 
 // Get retrieves the cached value associated with the provider's cache key.
 // If the cache entry is missing or if the type assertion fails, an error is returned.
 func (m *MemoryCacheProvider[T]) Get() (T, error) {
 	var result T
-	raw, found := cacheClient.Get(m.cacheKey)
+	raw, found := m.client.Get(m.cacheKey)
 	if !found {
 		return result, ErrDataNotFound
 	}
-	result, ok := raw.(T)
+	value, ok := raw.(T)
 	if !ok {
 		return result, ErrAssertionFailed
 	}
-	return result, nil
+	return value, nil
 }
 
 // Set caches the given value with a custom time-to-live (TTL).
 func (m *MemoryCacheProvider[T]) Set(value T, ttl time.Duration) {
-	cacheClient.Set(m.cacheKey, value, ttl)
+	m.client.Set(m.cacheKey, value, ttl)
 }
 
 // SetDefault caches the given value using the default expiration time.
 func (m *MemoryCacheProvider[T]) SetDefault(value T) {
-	cacheClient.SetDefault(m.cacheKey, value)
+	m.client.SetDefault(m.cacheKey, value)
 }
 
 // Clear removes the cached entry associated with the provider's cache key.
 func (m *MemoryCacheProvider[T]) Clear() {
-	cacheClient.Delete(m.cacheKey)
+	m.client.Delete(m.cacheKey)
 }

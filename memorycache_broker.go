@@ -1,21 +1,23 @@
 package memorycache
 
 import (
+	"errors"
 	"time"
 )
 
 // MemoryCacheBroker provides a transparent caching layer by leveraging the underlying cache provider.
 // It wraps a cache key and TTL configuration for caching operations.
 type MemoryCacheBroker[T any] struct {
-	key string
-	ttl time.Duration
+	ttl      time.Duration
+	provider *MemoryCacheProvider[T]
 }
 
-// NewMemoryCacheBroker creates a new CacheBroker with the specified key and TTL.
-func NewMemoryCacheBroker[T any](key string, ttl time.Duration) *MemoryCacheBroker[T] {
+// NewMemoryCacheBroker creates a new MemoryCacheBroker with the specified key and TTL.
+func NewMemoryCacheBroker[T any](key string, ttl time.Duration, opts ...ProviderOption) *MemoryCacheBroker[T] {
+	provider := NewMemoryCacheProvider[T](key, opts...)
 	return &MemoryCacheBroker[T]{
-		key: key,
-		ttl: ttl,
+		ttl:      ttl,
+		provider: provider,
 	}
 }
 
@@ -24,32 +26,26 @@ func NewMemoryCacheBroker[T any](key string, ttl time.Duration) *MemoryCacheBrok
 // If the data is not present, it calls getData to fetch the data from the source,
 // then stores the result in the cache with the broker's TTL.
 func (b *MemoryCacheBroker[T]) Exec(getData func() (T, error)) (T, error) {
-	// Create a cache provider for the given key.
-	cacheProvider := NewMemoryCacheProvider[T](b.key)
-
-	// Attempt to retrieve data from the cache.
-	if cachedData, err := cacheProvider.Get(); err == nil {
-		// Data found in cache; return it.
+	if cachedData, err := b.provider.Get(); err == nil {
 		return cachedData, nil
-	}
-
-	// Data not found in cache; fetch it using the provided function.
-	fetchedData, err := getData()
-	if err != nil {
-		// Return a zero value along with the error if data fetching fails.
+	} else if !errors.Is(err, ErrDataNotFound) {
 		var zero T
 		return zero, err
 	}
 
-	// Store the newly fetched data in the cache with the configured TTL.
-	cacheProvider.Set(fetchedData, b.ttl)
+	fetchedData, err := getData()
+	if err != nil {
+		var zero T
+		return zero, err
+	}
+
+	b.provider.Set(fetchedData, b.ttl)
 
 	return fetchedData, nil
 }
 
-// ClearCache removes the cached data associated with the broker's key.
+// Clear removes the cached data associated with the broker's key.
 // This is mainly used for testing purposes.
-func (b *MemoryCacheBroker[T]) ClearCache() {
-	cacheProvider := NewMemoryCacheProvider[T](b.key)
-	cacheProvider.Clear()
+func (b *MemoryCacheBroker[T]) Clear() {
+	b.provider.Clear()
 }

@@ -16,9 +16,10 @@ These components can help you implement transparent caching logic in your Go pro
 
 ## Features
 
-Type-Safe Caching: Use Go generics to store and retrieve any data type.
-Configurable Expiration: Set custom expiration times for cache entries.
-Transparent Execution: The broker automatically handles cache misses by invoking a data-fetching function.
+- Type-safe caching: Use Go generics to store and retrieve any data type.
+- Configurable expiration: Set custom expiration times for cache entries.
+- Transparent execution: The broker automatically handles cache misses by invoking a data-fetching function.
+- Injectable cache client: Provide your own `go-cache` instance or custom configuration when needed.
 
 ## Installation
 
@@ -31,7 +32,7 @@ go get github.com/usuginus/go-cache-helper
 Then import the package in your code:
 
 ```
-import "github.com/usuginus/go-cache-helper"
+import memorycache "github.com/usuginus/go-cache-helper"
 ```
 
 ## Usage
@@ -94,6 +95,32 @@ func main() {
 	fmt.Println("Result:", value)
 	
 	// Optionally clear the cache (useful for testing purposes).
-	broker.ClearCache()
+	broker.Clear()
+}
+```
+
+### Custom configuration
+
+You can reuse or customise the underlying cache client by passing options:
+
+```
+package main
+
+import (
+	"time"
+
+	"github.com/patrickmn/go-cache"
+	memorycache "github.com/usuginus/go-cache-helper"
+)
+
+func main() {
+	cacheClient := cache.New(5*time.Minute, 10*time.Minute)
+	broker := memorycache.NewMemoryCacheBroker[string](
+		"custom-key",
+		30*time.Second,
+		memorycache.WithCacheClient(cacheClient),
+	)
+
+	// ...
 }
 ```

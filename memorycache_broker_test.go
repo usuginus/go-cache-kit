@@ -3,19 +3,20 @@ package memorycache
 import (
 	"testing"
 	"time"
+
+	"github.com/patrickmn/go-cache"
 )
 
 func TestMemoryCacheBroker_Exec(t *testing.T) {
-	// Test that when the cache is empty, data is fetched from the origin.
 	t.Run("fetches data from origin when cache is empty", func(t *testing.T) {
 		cacheKey := "unique-key-for-cache-miss"
-		expiration := 1 * time.Second
-		broker := NewMemoryCacheBroker[any](cacheKey, expiration)
+		expiration := 25 * time.Millisecond
+		sharedCache := cache.New(DefaultExpiration, DefaultCleanupInterval)
+		broker := NewMemoryCacheBroker[any](cacheKey, expiration, WithCacheClient(sharedCache))
+		broker.Clear()
 
-		// Flag to verify if the getData function is executed.
 		called := false
 
-		// Execute the broker; since the cache is empty, the getData function should be called.
 		_, err := broker.Exec(func() (any, error) {
 			called = true
 			return struct{}{}, nil
@@ -28,25 +29,24 @@ func TestMemoryCacheBroker_Exec(t *testing.T) {
 		}
 	})
 
-	// Test that when the cache has data, the cached value is returned and the getData function is not executed.
 	t.Run("returns cached data when present", func(t *testing.T) {
 		cacheKey := "key-for-cached-data"
-		expiration := 1000 * time.Second // Use a long TTL to keep data in cache
-		broker := NewMemoryCacheBroker[any](cacheKey, expiration)
+		expiration := 5 * time.Second
+		sharedCache := cache.New(DefaultExpiration, DefaultCleanupInterval)
+		broker := NewMemoryCacheBroker[any](cacheKey, expiration, WithCacheClient(sharedCache))
+		broker.Clear()
 
-		// First call: populate the cache.
 		_, err := broker.Exec(func() (any, error) {
-			return struct{}{}, nil
+			return "cached", nil
 		})
 		if err != nil {
 			t.Fatalf("unexpected error during first Exec call: %v", err)
 		}
 
-		// Second call: verify that the getData function is not executed.
 		called := false
 		_, err = broker.Exec(func() (any, error) {
 			called = true
-			return struct{}{}, nil
+			return "should not be called", nil
 		})
 		if err != nil {
 			t.Fatalf("unexpected error during second Exec call: %v", err)

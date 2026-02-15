@@ -15,12 +15,15 @@ func TestMemoryCacheBroker_Exec(t *testing.T) {
 		cacheKey := "unique-key-for-cache-miss"
 		expiration := 25 * time.Millisecond
 		sharedCache := cache.New(DefaultExpiration, DefaultCleanupInterval)
-		broker := NewMemoryCacheBroker[any](cacheKey, expiration, WithCacheClient(sharedCache))
+		broker, err := NewMemoryCacheBroker[any](cacheKey, expiration, WithCacheClient(sharedCache))
+		if err != nil {
+			t.Fatalf("failed to create broker: %v", err)
+		}
 		broker.Clear()
 
 		called := false
 
-		_, err := broker.Exec(func() (any, error) {
+		_, err = broker.Exec(func() (any, error) {
 			called = true
 			return struct{}{}, nil
 		})
@@ -36,10 +39,13 @@ func TestMemoryCacheBroker_Exec(t *testing.T) {
 		cacheKey := "key-for-cached-data"
 		expiration := 5 * time.Second
 		sharedCache := cache.New(DefaultExpiration, DefaultCleanupInterval)
-		broker := NewMemoryCacheBroker[any](cacheKey, expiration, WithCacheClient(sharedCache))
+		broker, err := NewMemoryCacheBroker[any](cacheKey, expiration, WithCacheClient(sharedCache))
+		if err != nil {
+			t.Fatalf("failed to create broker: %v", err)
+		}
 		broker.Clear()
 
-		_, err := broker.Exec(func() (any, error) {
+		_, err = broker.Exec(func() (any, error) {
 			return "cached", nil
 		})
 		if err != nil {
@@ -62,7 +68,10 @@ func TestMemoryCacheBroker_Exec(t *testing.T) {
 	t.Run("returns error when data fetcher is nil", func(t *testing.T) {
 		cacheKey := "key-for-nil-fetcher"
 		sharedCache := cache.New(DefaultExpiration, DefaultCleanupInterval)
-		broker := NewMemoryCacheBroker[any](cacheKey, 1*time.Second, WithCacheClient(sharedCache))
+		broker, err := NewMemoryCacheBroker[any](cacheKey, 1*time.Second, WithCacheClient(sharedCache))
+		if err != nil {
+			t.Fatalf("failed to create broker: %v", err)
+		}
 		broker.Clear()
 
 		if _, err := broker.Exec(nil); !errors.Is(err, ErrNilDataFetcher) {
@@ -73,7 +82,10 @@ func TestMemoryCacheBroker_Exec(t *testing.T) {
 	t.Run("does not cache failed origin result", func(t *testing.T) {
 		cacheKey := "key-for-origin-error"
 		sharedCache := cache.New(DefaultExpiration, DefaultCleanupInterval)
-		broker := NewMemoryCacheBroker[any](cacheKey, 1*time.Second, WithCacheClient(sharedCache))
+		broker, err := NewMemoryCacheBroker[any](cacheKey, 1*time.Second, WithCacheClient(sharedCache))
+		if err != nil {
+			t.Fatalf("failed to create broker: %v", err)
+		}
 		broker.Clear()
 
 		originErr := errors.New("origin failure")
@@ -104,7 +116,10 @@ func TestMemoryCacheBroker_Exec(t *testing.T) {
 	t.Run("deduplicates concurrent cache misses", func(t *testing.T) {
 		cacheKey := "key-for-concurrent-miss-dedup"
 		sharedCache := cache.New(DefaultExpiration, DefaultCleanupInterval)
-		broker := NewMemoryCacheBroker[string](cacheKey, 1*time.Second, WithCacheClient(sharedCache))
+		broker, err := NewMemoryCacheBroker[string](cacheKey, 1*time.Second, WithCacheClient(sharedCache))
+		if err != nil {
+			t.Fatalf("failed to create broker: %v", err)
+		}
 		broker.Clear()
 
 		const workers = 16
@@ -143,6 +158,18 @@ func TestMemoryCacheBroker_Exec(t *testing.T) {
 
 		if got := atomic.LoadInt32(&calls); got != 1 {
 			t.Fatalf("expected origin function to be called once, got %d", got)
+		}
+	})
+
+	t.Run("rejects empty key", func(t *testing.T) {
+		if _, err := NewMemoryCacheBroker[string]("   ", 1*time.Second); !errors.Is(err, ErrInvalidCacheKey) {
+			t.Fatalf("expected ErrInvalidCacheKey, got %v", err)
+		}
+	})
+
+	t.Run("rejects invalid ttl", func(t *testing.T) {
+		if _, err := NewMemoryCacheBroker[string]("valid-key", -2*time.Second); !errors.Is(err, ErrInvalidCacheTTL) {
+			t.Fatalf("expected ErrInvalidCacheTTL, got %v", err)
 		}
 	})
 }

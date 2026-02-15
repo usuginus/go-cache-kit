@@ -4,6 +4,8 @@ import (
 	"errors"
 	"sync"
 	"time"
+
+	"github.com/patrickmn/go-cache"
 )
 
 // MemoryCacheBroker provides a transparent caching layer by leveraging the underlying cache provider.
@@ -15,12 +17,20 @@ type MemoryCacheBroker[T any] struct {
 }
 
 // NewMemoryCacheBroker creates a new MemoryCacheBroker with the specified key and TTL.
-func NewMemoryCacheBroker[T any](key string, ttl time.Duration, opts ...ProviderOption) *MemoryCacheBroker[T] {
-	provider := NewMemoryCacheProvider[T](key, opts...)
+func NewMemoryCacheBroker[T any](key string, ttl time.Duration, opts ...ProviderOption) (*MemoryCacheBroker[T], error) {
+	if ttl <= 0 && ttl != cache.DefaultExpiration && ttl != cache.NoExpiration {
+		return nil, ErrInvalidCacheTTL
+	}
+
+	provider, err := NewMemoryCacheProvider[T](key, opts...)
+	if err != nil {
+		return nil, err
+	}
+
 	return &MemoryCacheBroker[T]{
 		ttl:      ttl,
 		provider: provider,
-	}
+	}, nil
 }
 
 // Exec executes the provided data-fetching function through the cache.

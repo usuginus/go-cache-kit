@@ -1,46 +1,31 @@
 # go-cache-kit
 
-go-cache-kit is a lightweight, generic caching helper for Go that simplifies the use of in-memory caching. It provides a type-safe cache provider and a broker that transparently executes functions through the cache, reducing repetitive cache management code in your applications.
-
-## Overview
-
-This repository contains the implementation of two primary components:
-
-- MemoryCacheProvider:
-A generic cache provider that wraps the underlying [go-cache](https://github.com/patrickmn/go-cache) library. It allows you to store, retrieve, and clear cache entries in a type-safe manner using Go generics.
-
-- MemoryCacheBroker:
-A caching broker that leverages the MemoryCacheProvider. It provides an Exec method which first attempts to retrieve data from the cache. If the data is not present, it executes a supplied data-fetching function, caches the result, and then returns it.
-
-These components can help you implement transparent caching logic in your Go projects, making your business logic cleaner and more maintainable.
+`go-cache-kit` is a lightweight, generic helper for in-memory caching in Go.
+It wraps [go-cache](https://github.com/patrickmn/go-cache) with type-safe APIs and a cache-aside execution helper.
 
 ## Features
 
-- Type-safe caching: Use Go generics to store and retrieve any data type.
-- Configurable expiration: Set custom expiration times for cache entries.
-- Transparent execution: The broker automatically handles cache misses by invoking a data-fetching function.
-- Concurrent miss de-duplication: Each broker instance serializes cache misses to avoid duplicate origin fetches.
-- Injectable cache client: Provide your own `go-cache` instance or custom configuration when needed.
+- Type-safe cache access with Go generics
+- `MemoryCacheBroker.Exec` for cache-aside flow (`hit -> return`, `miss -> fetch -> set -> return`)
+- Concurrent miss de-duplication per broker instance
+- Configurable cache client via options
+- Constructor input validation (`key`, `ttl`, and nil custom client checks)
 
 ## Installation
 
-To install go-cache-kit, use go get:
-
-```
+```bash
 go get github.com/usuginus/go-cache-kit
 ```
 
-Then import the package in your code:
-
-```
+```go
 import memorycache "github.com/usuginus/go-cache-kit"
 ```
 
-## Usage
+## Quick Start
 
-Using MemoryCacheProvider
+### MemoryCacheProvider
 
-```
+```go
 package main
 
 import (
@@ -51,25 +36,26 @@ import (
 )
 
 func main() {
-	// Create a new MemoryCacheProvider for storing integer values.
-	provider := memorycache.NewMemoryCacheProvider[int]("my-cache-key")
-	
-	// Set a value with a custom TTL.
-	provider.Set(42, 10*time.Second)
-	
-	// Retrieve the cached value.
-	value, err := provider.Get()
+	provider, err := memorycache.NewMemoryCacheProvider[int]("example:key")
 	if err != nil {
-		fmt.Println("Error retrieving value:", err)
+		fmt.Println("provider init error:", err)
 		return
 	}
-	fmt.Println("Cached value:", value)
+
+	provider.Set(42, 10*time.Second)
+
+	value, err := provider.Get()
+	if err != nil {
+		fmt.Println("provider get error:", err)
+		return
+	}
+	fmt.Println("cached value:", value)
 }
 ```
 
-Using MemoryCacheBroker
+### MemoryCacheBroker
 
-```
+```go
 package main
 
 import (
@@ -80,55 +66,47 @@ import (
 )
 
 func main() {
-	// Create a new MemoryCacheBroker with a specific key and TTL.
-	broker := memorycache.NewMemoryCacheBroker[string]("my-broker-key", 30*time.Second)
-	
-	// Execute a data-fetching function through the cache.
+	broker, err := memorycache.NewMemoryCacheBroker[string]("example:broker", 30*time.Second)
+	if err != nil {
+		fmt.Println("broker init error:", err)
+		return
+	}
+
 	value, err := broker.Exec(func() (string, error) {
-		// Simulate fetching data from an origin source (e.g., database or API).
 		return "Hello, Cached World!", nil
 	})
 	if err != nil {
-		fmt.Println("Error executing through cache:", err)
+		fmt.Println("broker exec error:", err)
 		return
 	}
-	
-	fmt.Println("Result:", value)
-	
-	// Optionally clear the cache (useful for testing purposes).
-	broker.Clear()
+
+	fmt.Println("result:", value)
 }
 ```
 
-### Custom configuration
+## Configuration Options
 
-You can reuse or customise the underlying cache client by passing options:
+- `WithCacheClient(client)`:
+  reuse an existing `*cache.Cache` instance
+- `WithCacheConfig(defaultExpiration, cleanupInterval)`:
+  create a dedicated cache client with custom settings
+- `WithIsolatedCache()`:
+  create a dedicated cache client with package defaults
 
-```
-package main
+By default, providers share one package-level cache instance.
+Use unique keys across your application when relying on the shared default.
 
-import (
-	"time"
+## Validation Rules
 
-	"github.com/patrickmn/go-cache"
-	memorycache "github.com/usuginus/go-cache-kit"
-)
-
-func main() {
-	cacheClient := cache.New(5*time.Minute, 10*time.Minute)
-	broker := memorycache.NewMemoryCacheBroker[string](
-		"custom-key",
-		30*time.Second,
-		memorycache.WithCacheClient(cacheClient),
-	)
-
-	// ...
-}
-```
-
-By default, providers use a shared in-memory cache client. Use unique keys across your application.
-If you want a dedicated cache client per provider, use `memorycache.WithIsolatedCache()` or `memorycache.WithCacheConfig(...)`.
+- `NewMemoryCacheProvider`:
+  `key` must not be empty or whitespace
+- `WithCacheClient(nil)`:
+  rejected with `ErrNilCacheClient`
+- `NewMemoryCacheBroker`:
+  `ttl` must be positive, `cache.DefaultExpiration`, or `cache.NoExpiration`
+- `MemoryCacheBroker.Exec(nil)`:
+  rejected with `ErrNilDataFetcher`
 
 ## License
 
-This project is licensed under the MIT License. See [LICENSE](LICENSE).
+MIT License. See [LICENSE](LICENSE).

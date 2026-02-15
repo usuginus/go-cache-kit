@@ -1,14 +1,14 @@
 # go-cache-kit
 
-`go-cache-kit` is a lightweight, generic helper for in-memory caching in Go.
-It wraps [go-cache](https://github.com/patrickmn/go-cache) with type-safe APIs and a cache-aside execution helper.
+`go-cache-kit` is a lightweight, generic in-memory cache helper for Go.
+It wraps [go-cache](https://github.com/patrickmn/go-cache) with type-safe APIs and a cache-aside broker.
 
 ## Features
 
-- Type-safe cache access with Go generics
-- `MemoryCacheBroker.Exec` for cache-aside flow (`hit -> return`, `miss -> fetch -> set -> return`)
+- Type-safe cache operations with Go generics
+- Cache-aside execution via `MemoryCacheBroker.Exec`
 - Concurrent miss de-duplication per broker instance
-- Configurable cache client via options
+- Flexible cache configuration via options
 - Constructor input validation (`key`, `ttl`, and nil custom client checks)
 
 ## Installation
@@ -49,6 +49,7 @@ func main() {
 		fmt.Println("provider get error:", err)
 		return
 	}
+
 	fmt.Println("cached value:", value)
 }
 ```
@@ -84,28 +85,42 @@ func main() {
 }
 ```
 
-## Configuration Options
+## Options
 
-- `WithCacheClient(client)`:
-  reuse an existing `*cache.Cache` instance
-- `WithCacheConfig(defaultExpiration, cleanupInterval)`:
-  create a dedicated cache client with custom settings
-- `WithIsolatedCache()`:
-  create a dedicated cache client with package defaults
+- `WithCacheClient(client)`: reuse an existing `*cache.Cache` instance
+- `WithCacheConfig(defaultExpiration, cleanupInterval)`: create a dedicated cache client with custom settings
+- `WithIsolatedCache()`: create a dedicated cache client with package defaults
+
+`WithCacheConfig(...)` takes precedence over `WithCacheClient(...)` when both are passed.
 
 By default, providers share one package-level cache instance.
-Use unique keys across your application when relying on the shared default.
+Use unique keys across your application when relying on this shared default.
 
 ## Validation Rules
 
-- `NewMemoryCacheProvider`:
-  `key` must not be empty or whitespace
-- `WithCacheClient(nil)`:
-  rejected with `ErrNilCacheClient`
-- `NewMemoryCacheBroker`:
-  `ttl` must be positive, `cache.DefaultExpiration`, or `cache.NoExpiration`
-- `MemoryCacheBroker.Exec(nil)`:
-  rejected with `ErrNilDataFetcher`
+- `NewMemoryCacheProvider(...)` rejects empty/whitespace keys (`ErrInvalidCacheKey`)
+- `WithCacheClient(nil)` is rejected (`ErrNilCacheClient`)
+- `NewMemoryCacheBroker(...)` rejects invalid TTL (`ErrInvalidCacheTTL`)
+- `MemoryCacheBroker.Exec(nil)` is rejected (`ErrNilDataFetcher`)
+
+TTL is valid when it is positive, `cache.DefaultExpiration`, or `cache.NoExpiration`.
+
+## Benchmark
+
+Run benchmarks with allocation stats:
+
+```bash
+go test -run '^$' -bench . -benchmem ./...
+```
+
+Sample results (Go 1.22.2, darwin/arm64):
+
+- `Provider.Set`: `70.29 ns/op`
+- `Provider.Get` (hit): `54.04 ns/op`
+- `Provider.Get` (miss): `14.34 ns/op`
+- `Broker.Exec` (hit): `47.75 ns/op`
+- `Broker.Exec` (miss): `138.4 ns/op`
+- `Broker.Exec` (hit, parallel): `92.74 ns/op`
 
 ## License
 

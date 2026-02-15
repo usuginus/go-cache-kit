@@ -1,6 +1,6 @@
-# go-cache-helper
+# go-cache-kit
 
-go-cache-helper is a lightweight, generic caching helper for Go that simplifies the use of in-memory caching. It provides a type-safe cache provider and a broker that transparently executes functions through the cache, reducing repetitive cache management code in your applications.
+go-cache-kit is a lightweight, generic caching helper for Go that simplifies the use of in-memory caching. It provides a type-safe cache provider and a broker that transparently executes functions through the cache, reducing repetitive cache management code in your applications.
 
 ## Overview
 
@@ -19,20 +19,21 @@ These components can help you implement transparent caching logic in your Go pro
 - Type-safe caching: Use Go generics to store and retrieve any data type.
 - Configurable expiration: Set custom expiration times for cache entries.
 - Transparent execution: The broker automatically handles cache misses by invoking a data-fetching function.
+- Concurrent miss de-duplication: The broker serializes cache misses per key to avoid duplicate origin fetches.
 - Injectable cache client: Provide your own `go-cache` instance or custom configuration when needed.
 
 ## Installation
 
-To install go-cache-helper, use go get:
+To install go-cache-kit, use go get:
 
 ```
-go get github.com/usuginus/go-cache-helper
+go get github.com/usuginus/go-cache-kit
 ```
 
 Then import the package in your code:
 
 ```
-import memorycache "github.com/usuginus/go-cache-helper"
+import memorycache "github.com/usuginus/go-cache-kit"
 ```
 
 ## Usage
@@ -46,7 +47,7 @@ import (
 	"fmt"
 	"time"
 
-	memorycache "github.com/usuginus/go-cache-helper"
+	memorycache "github.com/usuginus/go-cache-kit"
 )
 
 func main() {
@@ -75,7 +76,7 @@ import (
 	"fmt"
 	"time"
 
-	memorycache "github.com/usuginus/go-cache-helper"
+	memorycache "github.com/usuginus/go-cache-kit"
 )
 
 func main() {
@@ -110,7 +111,7 @@ import (
 	"time"
 
 	"github.com/patrickmn/go-cache"
-	memorycache "github.com/usuginus/go-cache-helper"
+	memorycache "github.com/usuginus/go-cache-kit"
 )
 
 func main() {
@@ -124,3 +125,6 @@ func main() {
 	// ...
 }
 ```
+
+By default, providers use a shared in-memory cache client. Use unique keys across your application.
+If you want a dedicated cache client per provider, use `memorycache.WithIsolatedCache()` or `memorycache.WithCacheConfig(...)`.

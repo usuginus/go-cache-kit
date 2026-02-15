@@ -1,6 +1,7 @@
 package memorycache
 
 import (
+	"context"
 	"errors"
 	"sync"
 	"time"
@@ -43,6 +44,23 @@ func (b *MemoryCacheBroker[T]) Exec(getData func() (T, error)) (T, error) {
 		return zero, ErrNilDataFetcher
 	}
 
+	return b.ExecContext(context.Background(), func(context.Context) (T, error) {
+		return getData()
+	})
+}
+
+// ExecContext is the context-aware version of Exec.
+// It first attempts to retrieve the data from the cache.
+// On cache miss, it calls getData with ctx, stores the result with broker TTL, and returns it.
+func (b *MemoryCacheBroker[T]) ExecContext(ctx context.Context, getData func(context.Context) (T, error)) (T, error) {
+	if getData == nil {
+		var zero T
+		return zero, ErrNilDataFetcher
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
 	if cachedData, err := b.provider.Get(); err == nil {
 		return cachedData, nil
 	} else if !errors.Is(err, ErrDataNotFound) {
@@ -61,7 +79,7 @@ func (b *MemoryCacheBroker[T]) Exec(getData func() (T, error)) (T, error) {
 		return zero, err
 	}
 
-	fetchedData, err := getData()
+	fetchedData, err := getData(ctx)
 	if err != nil {
 		var zero T
 		return zero, err

@@ -7,6 +7,7 @@ It wraps [go-cache](https://github.com/patrickmn/go-cache) with type-safe APIs a
 
 - Type-safe cache operations with Go generics
 - Cache-aside execution via `MemoryCacheBroker.Exec`
+- Context-aware cache-aside execution via `MemoryCacheBroker.ExecContext`
 - Concurrent miss de-duplication per broker instance
 - Flexible cache configuration via options
 - Constructor input validation (`key`, `ttl`, and nil custom client checks)
@@ -60,6 +61,7 @@ func main() {
 package main
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -73,11 +75,11 @@ func main() {
 		return
 	}
 
-	value, err := broker.Exec(func() (string, error) {
+	value, err := broker.ExecContext(context.Background(), func(context.Context) (string, error) {
 		return "Hello, Cached World!", nil
 	})
 	if err != nil {
-		fmt.Println("broker exec error:", err)
+		fmt.Println("broker exec context error:", err)
 		return
 	}
 
@@ -102,6 +104,7 @@ Use unique keys across your application when relying on this shared default.
 - `WithCacheClient(nil)` is rejected (`ErrNilCacheClient`)
 - `NewMemoryCacheBroker(...)` rejects invalid TTL (`ErrInvalidCacheTTL`)
 - `MemoryCacheBroker.Exec(nil)` is rejected (`ErrNilDataFetcher`)
+- `MemoryCacheBroker.ExecContext(..., nil)` is rejected (`ErrNilDataFetcher`)
 
 TTL is valid when it is positive, `cache.DefaultExpiration`, or `cache.NoExpiration`.
 

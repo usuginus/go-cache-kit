@@ -19,7 +19,7 @@ These components can help you implement transparent caching logic in your Go pro
 - Type-safe caching: Use Go generics to store and retrieve any data type.
 - Configurable expiration: Set custom expiration times for cache entries.
 - Transparent execution: The broker automatically handles cache misses by invoking a data-fetching function.
-- Concurrent miss de-duplication: The broker serializes cache misses per key to avoid duplicate origin fetches.
+- Concurrent miss de-duplication: Each broker instance serializes cache misses to avoid duplicate origin fetches.
 - Injectable cache client: Provide your own `go-cache` instance or custom configuration when needed.
 
 ## Installation
@@ -128,3 +128,7 @@ func main() {
 
 By default, providers use a shared in-memory cache client. Use unique keys across your application.
 If you want a dedicated cache client per provider, use `memorycache.WithIsolatedCache()` or `memorycache.WithCacheConfig(...)`.
+
+## License
+
+This project is licensed under the MIT License. See [LICENSE](LICENSE).

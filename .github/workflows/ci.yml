@@ -39,7 +39,7 @@ jobs:
         run: go vet ./...
 
   lint:
-    name: Lint (golangci-lint + staticcheck)
+    name: Lint (golangci-lint)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

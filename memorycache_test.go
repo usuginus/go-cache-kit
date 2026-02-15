@@ -1,6 +1,7 @@
 package memorycache
 
 import (
+	"errors"
 	"reflect"
 	"testing"
 	"time"
@@ -81,4 +82,41 @@ func TestMemoryCacheProvider_Get(t *testing.T) {
 			t.Errorf("Cache Expiration: expected error %v, got %v", ErrDataNotFound, err)
 		}
 	})
+}
+
+func TestMemoryCacheProvider_Get_TypeAssertionFailed(t *testing.T) {
+	key := "cache-key:type-assertion-failed"
+	customCache := cache.New(1*time.Minute, 1*time.Minute)
+	customCache.Set(key, "invalid-type", 1*time.Minute)
+
+	provider := NewMemoryCacheProvider[ExampleStruct](key, WithCacheClient(customCache))
+	if _, err := provider.Get(); !errors.Is(err, ErrAssertionFailed) {
+		t.Fatalf("expected ErrAssertionFailed, got %v", err)
+	}
+}
+
+func TestMemoryCacheProvider_WithCacheConfigOverridesWithCacheClient(t *testing.T) {
+	sharedCache := cache.New(1*time.Minute, 1*time.Minute)
+
+	key1 := "cache-key:override-order1"
+	provider1 := NewMemoryCacheProvider[string](
+		key1,
+		WithCacheClient(sharedCache),
+		WithCacheConfig(1*time.Minute, 1*time.Minute),
+	)
+	provider1.Set("value-1", 1*time.Minute)
+	if _, found := sharedCache.Get(key1); found {
+		t.Fatalf("expected dedicated cache client for order1, but value leaked into shared cache")
+	}
+
+	key2 := "cache-key:override-order2"
+	provider2 := NewMemoryCacheProvider[string](
+		key2,
+		WithCacheConfig(1*time.Minute, 1*time.Minute),
+		WithCacheClient(sharedCache),
+	)
+	provider2.Set("value-2", 1*time.Minute)
+	if _, found := sharedCache.Get(key2); found {
+		t.Fatalf("expected dedicated cache client for order2, but value leaked into shared cache")
+	}
 }

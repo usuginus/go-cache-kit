@@ -2,6 +2,7 @@ package memorycache
 
 import (
 	"errors"
+	"sync"
 	"time"
 )
 
@@ -10,6 +11,7 @@ import (
 type MemoryCacheBroker[T any] struct {
 	ttl      time.Duration
 	provider *MemoryCacheProvider[T]
+	mu       sync.Mutex
 }
 
 // NewMemoryCacheBroker creates a new MemoryCacheBroker with the specified key and TTL.
@@ -26,6 +28,22 @@ func NewMemoryCacheBroker[T any](key string, ttl time.Duration, opts ...Provider
 // If the data is not present, it calls getData to fetch the data from the source,
 // then stores the result in the cache with the broker's TTL.
 func (b *MemoryCacheBroker[T]) Exec(getData func() (T, error)) (T, error) {
+	if getData == nil {
+		var zero T
+		return zero, ErrNilDataFetcher
+	}
+
+	if cachedData, err := b.provider.Get(); err == nil {
+		return cachedData, nil
+	} else if !errors.Is(err, ErrDataNotFound) {
+		var zero T
+		return zero, err
+	}
+
+	// Ensure only one concurrent cache miss fetches origin data for this broker key.
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
 	if cachedData, err := b.provider.Get(); err == nil {
 		return cachedData, nil
 	} else if !errors.Is(err, ErrDataNotFound) {

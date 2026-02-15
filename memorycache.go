@@ -1,7 +1,7 @@
 package memorycache
 
 import (
-	"fmt"
+	"errors"
 	"time"
 
 	"github.com/patrickmn/go-cache"
@@ -15,9 +15,11 @@ const DefaultCleanupInterval = 60 * time.Second
 
 var (
 	// ErrDataNotFound is returned when the requested cache entry does not exist.
-	ErrDataNotFound = fmt.Errorf("cache data not found")
+	ErrDataNotFound = errors.New("cache data not found")
 	// ErrAssertionFailed is returned when a cached value cannot be type-asserted to the expected type.
-	ErrAssertionFailed = fmt.Errorf("cache data type assertion failed")
+	ErrAssertionFailed = errors.New("cache data type assertion failed")
+	// ErrNilDataFetcher is returned when a nil data-fetching function is passed to broker Exec.
+	ErrNilDataFetcher = errors.New("data-fetching function is nil")
 )
 
 // defaultCacheClient is the underlying shared in-memory cache instance.
@@ -27,7 +29,10 @@ var defaultCacheClient = cache.New(DefaultExpiration, DefaultCleanupInterval)
 type ProviderOption func(*providerConfig)
 
 type providerConfig struct {
-	client *cache.Cache
+	client            *cache.Cache
+	useCacheConfig    bool
+	defaultExpiration time.Duration
+	cleanupInterval   time.Duration
 }
 
 // WithCacheClient lets callers inject a custom cache client.
@@ -41,8 +46,15 @@ func WithCacheClient(client *cache.Cache) ProviderOption {
 // This option overrides WithCacheClient when both are provided.
 func WithCacheConfig(defaultExpiration, cleanupInterval time.Duration) ProviderOption {
 	return func(cfg *providerConfig) {
-		cfg.client = cache.New(defaultExpiration, cleanupInterval)
+		cfg.useCacheConfig = true
+		cfg.defaultExpiration = defaultExpiration
+		cfg.cleanupInterval = cleanupInterval
 	}
+}
+
+// WithIsolatedCache creates a dedicated cache client using package default settings.
+func WithIsolatedCache() ProviderOption {
+	return WithCacheConfig(DefaultExpiration, DefaultCleanupInterval)
 }
 
 // MemoryCacheProvider provides a generic interface for caching values of type T.
@@ -56,6 +68,10 @@ func NewMemoryCacheProvider[T any](cacheKey string, opts ...ProviderOption) *Mem
 	cfg := providerConfig{client: defaultCacheClient}
 	for _, opt := range opts {
 		opt(&cfg)
+	}
+
+	if cfg.useCacheConfig {
+		cfg.client = cache.New(cfg.defaultExpiration, cfg.cleanupInterval)
 	}
 	if cfg.client == nil {
 		cfg.client = defaultCacheClient

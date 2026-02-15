@@ -2,6 +2,7 @@ package memorycache
 
 import (
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/patrickmn/go-cache"
@@ -20,6 +21,12 @@ var (
 	ErrAssertionFailed = errors.New("cache data type assertion failed")
 	// ErrNilDataFetcher is returned when a nil data-fetching function is passed to broker Exec.
 	ErrNilDataFetcher = errors.New("data-fetching function is nil")
+	// ErrInvalidCacheKey is returned when cache key is empty or whitespace only.
+	ErrInvalidCacheKey = errors.New("cache key must not be empty")
+	// ErrNilCacheClient is returned when WithCacheClient receives a nil cache instance.
+	ErrNilCacheClient = errors.New("cache client must not be nil")
+	// ErrInvalidCacheTTL is returned when broker TTL is not supported.
+	ErrInvalidCacheTTL = errors.New("cache ttl must be positive, cache.DefaultExpiration, or cache.NoExpiration")
 )
 
 // defaultCacheClient is the underlying shared in-memory cache instance.
@@ -30,6 +37,7 @@ type ProviderOption func(*providerConfig)
 
 type providerConfig struct {
 	client            *cache.Cache
+	hasCustomClient   bool
 	useCacheConfig    bool
 	defaultExpiration time.Duration
 	cleanupInterval   time.Duration
@@ -38,6 +46,7 @@ type providerConfig struct {
 // WithCacheClient lets callers inject a custom cache client.
 func WithCacheClient(client *cache.Cache) ProviderOption {
 	return func(cfg *providerConfig) {
+		cfg.hasCustomClient = true
 		cfg.client = client
 	}
 }
@@ -64,7 +73,11 @@ type MemoryCacheProvider[T any] struct {
 }
 
 // NewMemoryCacheProvider creates a new MemoryCacheProvider with the specified cache key.
-func NewMemoryCacheProvider[T any](cacheKey string, opts ...ProviderOption) *MemoryCacheProvider[T] {
+func NewMemoryCacheProvider[T any](cacheKey string, opts ...ProviderOption) (*MemoryCacheProvider[T], error) {
+	if strings.TrimSpace(cacheKey) == "" {
+		return nil, ErrInvalidCacheKey
+	}
+
 	cfg := providerConfig{client: defaultCacheClient}
 	for _, opt := range opts {
 		opt(&cfg)
@@ -72,6 +85,8 @@ func NewMemoryCacheProvider[T any](cacheKey string, opts ...ProviderOption) *Mem
 
 	if cfg.useCacheConfig {
 		cfg.client = cache.New(cfg.defaultExpiration, cfg.cleanupInterval)
+	} else if cfg.hasCustomClient && cfg.client == nil {
+		return nil, ErrNilCacheClient
 	}
 	if cfg.client == nil {
 		cfg.client = defaultCacheClient
@@ -79,7 +94,7 @@ func NewMemoryCacheProvider[T any](cacheKey string, opts ...ProviderOption) *Mem
 	return &MemoryCacheProvider[T]{
 		cacheKey: cacheKey,
 		client:   cfg.client,
-	}
+	}, nil
 }
 
 // Get retrieves the cached value associated with the provider's cache key.

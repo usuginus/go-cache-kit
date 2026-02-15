@@ -1,4 +1,4 @@
-module github.com/KoichiGinu/go-cache-helper
+module github.com/usuginus/go-cache-kit
 
 go 1.22.2
 

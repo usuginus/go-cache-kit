@@ -271,4 +271,32 @@ func TestMemoryCacheBroker_ExecContext(t *testing.T) {
 			t.Fatalf("expected no cached value after canceled fetch, got %v", err)
 		}
 	})
+
+	t.Run("handles nil context by converting to context.Background", func(t *testing.T) {
+		cacheKey := "key-for-exec-context-nil"
+		sharedCache := cache.New(DefaultExpiration, DefaultCleanupInterval)
+		broker, err := NewMemoryCacheBroker[string](cacheKey, 1*time.Second, WithCacheClient(sharedCache))
+		if err != nil {
+			t.Fatalf("failed to create broker: %v", err)
+		}
+		broker.Clear()
+
+		called := false
+		value, err := broker.ExecContext(nil, func(ctx context.Context) (string, error) {
+			called = true
+			if ctx == nil {
+				t.Fatal("expected non-nil context in data fetcher")
+			}
+			return "success", nil
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !called {
+			t.Fatal("expected data fetcher to be called")
+		}
+		if value != "success" {
+			t.Fatalf("unexpected value: %q", value)
+		}
+	})
 }

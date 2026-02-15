@@ -86,6 +86,63 @@ func main() {
 }
 ```
 
+### MemoryCacheBroker with context timeout
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"io"
+	"net/http"
+	"time"
+
+	memorycache "github.com/usuginus/go-cache-kit"
+)
+
+func main() {
+	broker, err := memorycache.NewMemoryCacheBroker[string]("example:ctx", 30*time.Second)
+	if err != nil {
+		fmt.Println("broker init error:", err)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+
+	value, err := broker.ExecContext(ctx, func(ctx context.Context) (string, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://example.com/api/value", nil)
+		if err != nil {
+			return "", err
+		}
+
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return "", err
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			return "", fmt.Errorf("unexpected status: %s", resp.Status)
+		}
+
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return "", err
+		}
+
+		return string(body), nil
+	})
+	if err != nil {
+		fmt.Println("broker exec context error:", err)
+		return
+	}
+
+	fmt.Println("result:", value)
+}
+```
+
 ## Options
 
 - `WithCacheClient(client)`: reuse an existing `*cache.Cache` instance

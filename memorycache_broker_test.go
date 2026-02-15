@@ -271,4 +271,60 @@ func TestMemoryCacheBroker_ExecContext(t *testing.T) {
 			t.Fatalf("expected no cached value after canceled fetch, got %v", err)
 		}
 	})
+
+	t.Run("deduplicates concurrent cache misses", func(t *testing.T) {
+		cacheKey := "key-for-exec-context-concurrent-miss-dedup"
+		sharedCache := cache.New(DefaultExpiration, DefaultCleanupInterval)
+		broker, err := NewMemoryCacheBroker[string](cacheKey, 1*time.Second, WithCacheClient(sharedCache))
+		if err != nil {
+			t.Fatalf("failed to create broker: %v", err)
+		}
+		broker.Clear()
+
+		const workers = 16
+		start := make(chan struct{})
+		errCh := make(chan error, workers)
+		var calls int32
+		var wg sync.WaitGroup
+
+		type ctxKey string
+		const k ctxKey = "request-id"
+		ctx := context.WithValue(context.Background(), k, "req-456")
+
+		for range workers {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				<-start
+				value, err := broker.ExecContext(ctx, func(inner context.Context) (string, error) {
+					atomic.AddInt32(&calls, 1)
+					time.Sleep(30 * time.Millisecond)
+					v, _ := inner.Value(k).(string)
+					if v != "req-456" {
+						return "", errors.New("context value not propagated correctly")
+					}
+					return "deduped", nil
+				})
+				if err != nil {
+					errCh <- err
+					return
+				}
+				if value != "deduped" {
+					errCh <- errors.New("unexpected value returned from cache broker")
+				}
+			}()
+		}
+
+		close(start)
+		wg.Wait()
+		close(errCh)
+
+		for err := range errCh {
+			t.Fatalf("unexpected concurrent ExecContext error: %v", err)
+		}
+
+		if got := atomic.LoadInt32(&calls); got != 1 {
+			t.Fatalf("expected origin function to be called once, got %d", got)
+		}
+	})
 }

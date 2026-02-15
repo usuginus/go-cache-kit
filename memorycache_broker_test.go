@@ -1,6 +1,7 @@
 package memorycache
 
 import (
+	"context"
 	"errors"
 	"sync"
 	"sync/atomic"
@@ -170,6 +171,160 @@ func TestMemoryCacheBroker_Exec(t *testing.T) {
 	t.Run("rejects invalid ttl", func(t *testing.T) {
 		if _, err := NewMemoryCacheBroker[string]("valid-key", -2*time.Second); !errors.Is(err, ErrInvalidCacheTTL) {
 			t.Fatalf("expected ErrInvalidCacheTTL, got %v", err)
+		}
+	})
+}
+
+func TestMemoryCacheBroker_ExecContext(t *testing.T) {
+	t.Run("passes context to data fetcher on cache miss", func(t *testing.T) {
+		cacheKey := "key-for-exec-context-miss"
+		sharedCache := cache.New(DefaultExpiration, DefaultCleanupInterval)
+		broker, err := NewMemoryCacheBroker[string](cacheKey, 1*time.Second, WithCacheClient(sharedCache))
+		if err != nil {
+			t.Fatalf("failed to create broker: %v", err)
+		}
+		broker.Clear()
+
+		type ctxKey string
+		const k ctxKey = "trace-id"
+		ctx := context.WithValue(context.Background(), k, "abc-123")
+
+		value, err := broker.ExecContext(ctx, func(inner context.Context) (string, error) {
+			v, _ := inner.Value(k).(string)
+			if v != "abc-123" {
+				t.Fatalf("unexpected context value: %q", v)
+			}
+			return "from-origin", nil
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if value != "from-origin" {
+			t.Fatalf("unexpected value: %q", value)
+		}
+	})
+
+	t.Run("returns cached data and skips data fetcher when present", func(t *testing.T) {
+		cacheKey := "key-for-exec-context-hit"
+		sharedCache := cache.New(DefaultExpiration, DefaultCleanupInterval)
+		broker, err := NewMemoryCacheBroker[string](cacheKey, 1*time.Second, WithCacheClient(sharedCache))
+		if err != nil {
+			t.Fatalf("failed to create broker: %v", err)
+		}
+		broker.Clear()
+
+		if _, err := broker.ExecContext(context.Background(), func(context.Context) (string, error) {
+			return "cached", nil
+		}); err != nil {
+			t.Fatalf("unexpected error on warm-up: %v", err)
+		}
+
+		called := false
+		value, err := broker.ExecContext(context.Background(), func(context.Context) (string, error) {
+			called = true
+			return "should-not-run", nil
+		})
+		if err != nil {
+			t.Fatalf("unexpected error on cached call: %v", err)
+		}
+		if called {
+			t.Fatalf("expected data fetcher not to be called on cache hit")
+		}
+		if value != "cached" {
+			t.Fatalf("unexpected cached value: %q", value)
+		}
+	})
+
+	t.Run("returns error when data fetcher is nil", func(t *testing.T) {
+		cacheKey := "key-for-exec-context-nil-fetcher"
+		sharedCache := cache.New(DefaultExpiration, DefaultCleanupInterval)
+		broker, err := NewMemoryCacheBroker[string](cacheKey, 1*time.Second, WithCacheClient(sharedCache))
+		if err != nil {
+			t.Fatalf("failed to create broker: %v", err)
+		}
+		broker.Clear()
+
+		if _, err := broker.ExecContext(context.Background(), nil); !errors.Is(err, ErrNilDataFetcher) {
+			t.Fatalf("expected ErrNilDataFetcher, got %v", err)
+		}
+	})
+
+	t.Run("propagates context cancellation error and does not cache", func(t *testing.T) {
+		cacheKey := "key-for-exec-context-canceled"
+		sharedCache := cache.New(DefaultExpiration, DefaultCleanupInterval)
+		broker, err := NewMemoryCacheBroker[string](cacheKey, 1*time.Second, WithCacheClient(sharedCache))
+		if err != nil {
+			t.Fatalf("failed to create broker: %v", err)
+		}
+		broker.Clear()
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		if _, err := broker.ExecContext(ctx, func(context.Context) (string, error) {
+			return "", context.Canceled
+		}); !errors.Is(err, context.Canceled) {
+			t.Fatalf("expected context.Canceled, got %v", err)
+		}
+
+		if _, err := broker.provider.Get(); !errors.Is(err, ErrDataNotFound) {
+			t.Fatalf("expected no cached value after canceled fetch, got %v", err)
+		}
+	})
+
+	t.Run("deduplicates concurrent cache misses", func(t *testing.T) {
+		cacheKey := "key-for-exec-context-concurrent-miss-dedup"
+		sharedCache := cache.New(DefaultExpiration, DefaultCleanupInterval)
+		broker, err := NewMemoryCacheBroker[string](cacheKey, 1*time.Second, WithCacheClient(sharedCache))
+		if err != nil {
+			t.Fatalf("failed to create broker: %v", err)
+		}
+		broker.Clear()
+
+		const workers = 16
+		start := make(chan struct{})
+		errCh := make(chan error, workers)
+		var calls int32
+		var wg sync.WaitGroup
+
+		type ctxKey string
+		const k ctxKey = "request-id"
+		ctx := context.WithValue(context.Background(), k, "req-456")
+
+		for range workers {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				<-start
+				value, err := broker.ExecContext(ctx, func(inner context.Context) (string, error) {
+					atomic.AddInt32(&calls, 1)
+					time.Sleep(30 * time.Millisecond)
+					v, _ := inner.Value(k).(string)
+					if v != "req-456" {
+						return "", errors.New("context value not propagated correctly")
+					}
+					return "deduped", nil
+				})
+				if err != nil {
+					errCh <- err
+					return
+				}
+				if value != "deduped" {
+					errCh <- errors.New("unexpected value returned from cache broker")
+				}
+			}()
+		}
+
+		close(start)
+		wg.Wait()
+		close(errCh)
+
+		for err := range errCh {
+			t.Fatalf("unexpected concurrent ExecContext error: %v", err)
+		}
+
+		if got := atomic.LoadInt32(&calls); got != 1 {
+			t.Fatalf("expected origin function to be called once, got %d", got)
 		}
 	})
 }

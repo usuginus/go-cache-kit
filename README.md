@@ -61,7 +61,6 @@ func main() {
 package main
 
 import (
-	"context"
 	"fmt"
 	"time"
 
@@ -75,11 +74,11 @@ func main() {
 		return
 	}
 
-	value, err := broker.ExecContext(context.Background(), func(context.Context) (string, error) {
+	value, err := broker.Exec(func() (string, error) {
 		return "Hello, Cached World!", nil
 	})
 	if err != nil {
-		fmt.Println("broker exec context error:", err)
+		fmt.Println("broker exec error:", err)
 		return
 	}
 

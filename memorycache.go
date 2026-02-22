@@ -27,6 +27,8 @@ var (
 	ErrNilCacheClient = errors.New("cache client must not be nil")
 	// ErrInvalidCacheTTL is returned when broker TTL is not supported.
 	ErrInvalidCacheTTL = errors.New("cache ttl must be positive, cache.DefaultExpiration, or cache.NoExpiration")
+	// ErrDataFetcherPanicked is returned when the broker data fetcher panics.
+	ErrDataFetcherPanicked = errors.New("data-fetching function panicked")
 )
 
 // defaultCacheClient is the underlying shared in-memory cache instance.

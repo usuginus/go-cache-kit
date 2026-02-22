@@ -8,6 +8,8 @@ It wraps [go-cache](https://github.com/patrickmn/go-cache) with type-safe APIs a
 - Type-safe cache operations with Go generics
 - Cache-aside execution via `MemoryCacheBroker.Exec`
 - Context-aware cache-aside execution via `MemoryCacheBroker.ExecContext`
+- Waiters can cancel while a cache-miss fetch is in-flight
+- Shared miss fetch is canceled when all waiting callers cancel
 - Concurrent miss de-duplication per broker instance
 - Flexible cache configuration via options
 - Constructor input validation (`key`, `ttl`, and nil custom client checks)
@@ -143,6 +145,14 @@ func main() {
 }
 ```
 
+## ExecContext Semantics
+
+- On cache hit, cached data is returned immediately.
+- On cache miss, concurrent callers on the same broker share one origin fetch.
+- Each caller can stop waiting via its own context.
+- The shared origin fetch is canceled only when all waiting callers are canceled.
+- `nil` context is treated as `context.Background()`.
+
 ## Options
 
 - `WithCacheClient(client)`: reuse an existing `*cache.Cache` instance
@@ -161,6 +171,11 @@ Use unique keys across your application when relying on this shared default.
 - `NewMemoryCacheBroker(...)` rejects invalid TTL (`ErrInvalidCacheTTL`)
 - `MemoryCacheBroker.Exec(nil)` is rejected (`ErrNilDataFetcher`)
 - `MemoryCacheBroker.ExecContext(..., nil)` is rejected (`ErrNilDataFetcher`)
+- Panics in broker fetcher are returned as `ErrDataFetcherPanicked`
+
+`ExecContext` notes:
+- Cache hit is prioritized even if caller context is already canceled.
+- On cache miss with an already-canceled context, `ctx.Err()` is returned.
 
 TTL is valid when it is positive, `cache.DefaultExpiration`, or `cache.NoExpiration`.
 

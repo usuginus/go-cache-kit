@@ -249,8 +249,8 @@ func TestMemoryCacheBroker_ExecContext(t *testing.T) {
 		}
 	})
 
-	t.Run("treats nil context as background", func(t *testing.T) {
-		cacheKey := "key-for-exec-context-nil-context"
+	t.Run("accepts context TODO", func(t *testing.T) {
+		cacheKey := "key-for-exec-context-todo-context"
 		sharedCache := cache.New(DefaultExpiration, DefaultCleanupInterval)
 		broker, err := NewMemoryCacheBroker[string](cacheKey, 1*time.Second, WithCacheClient(sharedCache))
 		if err != nil {
@@ -258,16 +258,16 @@ func TestMemoryCacheBroker_ExecContext(t *testing.T) {
 		}
 		broker.Clear()
 
-		value, err := broker.ExecContext(nil, func(inner context.Context) (string, error) {
+		value, err := broker.ExecContext(context.TODO(), func(inner context.Context) (string, error) {
 			if inner == nil {
 				t.Fatalf("expected non-nil context")
 			}
-			return "from-nil-ctx", nil
+			return "from-todo-ctx", nil
 		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if value != "from-nil-ctx" {
+		if value != "from-todo-ctx" {
 			t.Fatalf("unexpected value: %q", value)
 		}
 	})

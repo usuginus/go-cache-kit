@@ -151,7 +151,6 @@ func main() {
 - On cache miss, concurrent callers on the same broker share one origin fetch.
 - Each caller can stop waiting via its own context.
 - The shared origin fetch is canceled only when all waiting callers are canceled.
-- `nil` context is treated as `context.Background()`.
 
 ## Options
 
